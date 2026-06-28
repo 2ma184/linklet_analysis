@@ -7,9 +7,9 @@ def extract_gamma_events(input_csv_path, output_csv_path, start_layer, n_layers)
     print(f"Total available tracks: {len(df)}")
 
     # プレート数が5のとき、リンク（カラム名）の終端は4になる
-    end_layer = start_layer + n_layers - 1  # 例: 1 + 5 - 1 = 5
-    end_link = end_layer - 1                # 例: 5 - 1 = 4 
-    
+    down_layer = start_layer - n_layers + 1 # 例: 5 - 5 + 1 = 5
+    end_link = start_layer - 1                # 例: 5 - 1 = 4 
+
     # ---------------------------------------------------------
     # データフレームを辞書リストに変換
     # ---------------------------------------------------------
@@ -51,8 +51,8 @@ def extract_gamma_events(input_csv_path, output_csv_path, start_layer, n_layers)
                         # =========================================================
                         # ① IDベースの重複排除
                         # ========================================================
-                        a_id = int(A[f"id{end_layer}"])
-                        b_id = int(B[f"id{end_layer}"])
+                        a_id = int(A[f"id{start_layer}"])
+                        b_id = int(B[f"id{start_layer}"])
                         
                         if A is B:
                             continue
@@ -65,10 +65,10 @@ def extract_gamma_events(input_csv_path, output_csv_path, start_layer, n_layers)
                         # ② 物理条件カット（幾何学的収束・ねじれ判定）
                         # =========================================================
                         # リンク番号の開始から終了までループを回して距離を取得
-                        # 例: start_layer=1, n_layers=5 のとき、idx は 1, 2, 3, 4 と動く
+                        # 例: down_layer=1, n_layers=5 のとき、idx は 1, 2, 3, 4 と動く
                         dtc0 = []
                         dtc1 = []
-                        for idx in range(start_layer, end_layer):
+                        for idx in range(down_layer, start_layer):
                             dtc0.append(np.hypot(A[f"x0_{idx}"] - B[f"x0_{idx}"], A[f"y0_{idx}"] - B[f"y0_{idx}"]))
                             dtc1.append(np.hypot(A[f"x1_{idx}"] - B[f"x1_{idx}"], A[f"y1_{idx}"] - B[f"y1_{idx}"]))
 
@@ -102,7 +102,7 @@ def extract_gamma_events(input_csv_path, output_csv_path, start_layer, n_layers)
 
                         # 各リンクでのねじれ条件
                         twisted = False
-                        for idx in range(start_layer, end_link):
+                        for idx in range(down_layer, end_link):
                             val_1 = np.hypot(A[f"x1_{idx}"] - mx, A[f"y1_{idx}"] - my) - np.hypot(B[f"x1_{idx}"] - mx, B[f"y1_{idx}"] - my)
                             val_0 = np.hypot(A[f"x0_{idx}"] - mx, A[f"y0_{idx}"] - my) - np.hypot(B[f"x0_{idx}"] - mx, B[f"y0_{idx}"] - my)
                             if val_1 * val_0 < 0:

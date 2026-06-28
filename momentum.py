@@ -47,7 +47,7 @@ def calculate_momentum(df,down_layer,n_layers):
     df["RMSx_e"] = df["RMSx"] / np.sqrt(2 * (N1 - 1))
     df["RMSy_e"] = df["RMSy"] / np.sqrt(2 * (N1 - 1))
     df["RMS_e"] = df["RMS"] / np.sqrt(2 * (N2 - 1))
-    
+
 
     #--- 運動量の計算 ---
     df["px"] = (13.6 / df["RMSx"]) * sqrt_thick * log_term  # 電磁散乱の式を逆算
@@ -59,6 +59,6 @@ def calculate_momentum(df,down_layer,n_layers):
     df["py_e"] = df["py"] / np.sqrt(2 * (N1 - 1))
     df["p_xy_e"] = 0.5 * np.sqrt(df["px_e"]**2 + df["py_e"]**2)
     df["p_e"] = df["p"] / np.sqrt(2 * (N2 - 1))
-    print(1)
+
     print(f"calculated : {len(df)}")
     return df
