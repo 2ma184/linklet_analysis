@@ -53,15 +53,15 @@ def build_links(downlayer, n_layers, cut_index=0):
 # =========================================================
 # veto_link：指定した次のレイヤーに繋がらない飛跡を抽出する（重複排除なし）
 # =========================================================
-def veto_link(df_tracks, downlayer, n_layers, cut_index=0):
+def veto_link(df_tracks, start_layer, veto_layer, cut_index=0):
 
-    veto_fname = f"l-{(n_layers+downlayer-1):03d}-{(n_layers+downlayer):03d}.root"
+    veto_fname = f"l-{(start_layer):03d}-{(veto_layer):03d}.root"
     print(f"\n===== Veto processing with: {veto_fname} =====")
 
     df_veto = root_to_df(f"raw_data/{veto_fname}", branches=["id0"])
 
     veto_ids = df_veto["id0"]
-    veto_mask = ~df_tracks[f"id{n_layers+downlayer-1}"].isin(veto_ids)
+    veto_mask = ~df_tracks[f"id{start_layer}"].isin(veto_ids)
     
     veto_df = df_tracks[veto_mask]
 
