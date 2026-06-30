@@ -3,4 +3,4 @@
 linklet：Emulsionを名古屋大学F研にあるHST-2（HTS-1）でスキャンし、二枚を接続したファイル
 
 これをcloneすればfrom linklet_analysis.<使いたい関数のファイル> import <使いたい関数>を書くだけで関数が使えます。\
-cloneした場所をubuntuなら~/.bashrcにexport PYTHONPATH=$HOME/<pullした場所>:$PYTHONPATHを書き込んでsource ~/.bashrcするとどこでも使えます。
+cloneした場所をubuntuなら~/.bashrcにexport PYTHONPATH=$HOME/<cloneした場所>:$PYTHONPATHを書き込んでsource ~/.bashrcするとどこでも使えます。
