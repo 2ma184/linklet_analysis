@@ -42,3 +42,4 @@ def apply_cut(df, cut_rule):
         mask &= cut_ph(df["ph0"], df["ph1"], cut_rule["ph_th"])
     return df[mask]
 
+#内定欲しい
