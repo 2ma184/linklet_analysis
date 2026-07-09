@@ -1,15 +1,5 @@
 import numpy as np
 
-# ======================
-# カットまとめ
-# ======================
-CUT_REGISTRY = {
-    0: {"name": "non",
-        "rule":{}},
-    1: {"name": "standard", 
-        "rule":{"ax":0.0, "ax_sigma":1.0, "ay":0.0, "ay_sigma":1.0, "ph_th":40}}
-}
-
 # =========================================================
 # カット関数群
 # =========================================================
@@ -24,7 +14,7 @@ def cut_theta(center, threshold, theta):
 
 #-- CUT適応関数
 def apply_cut(df, cut_rule): 
-    # 最初はすべて True（全行通過）のマスクを作成    
+    # 設定されてないものはスルーするため最初はすべて True（全行通過）のマスクを作成    
     mask = np.ones(len(df), dtype=bool)
     # ビーム位置
     if "cx" in cut_rule and "cy" in cut_rule and "r" in cut_rule: 

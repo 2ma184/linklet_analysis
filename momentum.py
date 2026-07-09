@@ -30,6 +30,14 @@ def calculate_momentum(df,down_layer,n_layers):
     # 3次元幾何補正を考慮した角度差（散乱角）の計算
     dax = np.atan(ax1*np.cos(track_B0s)*0.95) - np.atan(ax0*np.cos(track_B0s)*0.95) # 0.95は屈折率による浮き上がりの作用を打ち消す
     day = np.atan(ay1*np.cos(track_A0s)*0.95) - np.atan(ay0*np.cos(track_A0s)*0.95)
+    
+    for idx, layer_num in enumerate(linklet_range):
+        df[f"dax_{layer_num}"] = dax[:, idx]
+        df[f"day_{layer_num}"] = day[:, idx]
+
+    # if cut==1:
+    #     dax[:,3]=dax[:,3]-0.01
+    #     day[:,3]=day[:,3]-0.01
 
     thick = 0.007*2 / 3.35 #放射長3.35 cm 乳剤層の厚み 70 μm
     cos_track0 = np.cos(np.atan(np.sqrt(np.tan(track_A0)**2+np.tan(track_B0)**2)))

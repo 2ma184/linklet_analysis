@@ -1,15 +1,15 @@
 import pandas as pd
 import numpy as np
 from linklet_analysis.root import root_to_df
-from linklet_analysis.cuts import (CUT_REGISTRY, apply_cut)
-
+from linklet_analysis.cuts import  apply_cut
+from linklet_analysis.config import CUT_REGISTRY_QST2021
 # =========================================================
 # build_links：最初の layer だけ cut を適用（重複排除なし）
 # =========================================================
 def build_links(downlayer, n_layers, cut_index=0):
     links = None
 
-    cut = CUT_REGISTRY[cut_index]
+    cut = CUT_REGISTRY_QST2021[cut_index]
     cut_rule = cut["rule"]
     print(f"===== Using cut: {cut['name']} =====")
 
@@ -49,11 +49,54 @@ def build_links(downlayer, n_layers, cut_index=0):
         
     return links, cut
 
+def build_links_new(filepath, start_layer, n_layers, cut_rule, small_is_up=True, up_to_down=True):
+    links = None
+    # if ((small_is_up) & (up_to_down)) or (!(small_is_up) & !(up_to_down)) :
+    #     for i in range(start_layer,start_layer+n_layers):
+    # else:
+    #     for i in range(start_layer,start_layer+n_layers):
+
+    for i in range(start_layer,start_layer+n_layers-1):
+        filename = f"l-{i:03d}-{i+1:03d}.root"
+        print(f"Processing file: {filepath}{filename}")
+
+        df = root_to_df(f"{filepath}{filename}", branches=["id0", "id1","x0","x1","y0","y1","z0","z1","ax0","ax1","ay0","ay1","ph0","ph1"])
+        if i == 1:
+            df = apply_cut(df, cut_rule)
+
+        df = df.drop_duplicates(subset="id0")
+
+        df = df.rename(columns={
+            "id0": f"id{i}",
+            "id1": f"id{i+1}",
+            "x0":  f"x0_{i}",
+            "x1":  f"x1_{i}",
+            "y0":  f"y0_{i}",
+            "y1":  f"y1_{i}",
+            "z0":  f"z0_{i}",
+            "z1":  f"z1_{i}",
+            "ax0": f"ax0_{i}",
+            "ax1": f"ax1_{i}",
+            "ay0": f"ay0_{i}",
+            "ay1": f"ay1_{i}",
+            "ph0": f"ph0_{i}",
+            "ph1": f"ph1_{i}",
+        })
+
+        if links is None:
+            links = df
+        else:
+            links = pd.merge(links, df, on=f"id{i}", how="inner")
+
+        print(f"Link Tracks 1 to {i+1} = {len(links)}")
+        
+    return links
+
 
 # =========================================================
 # veto_link：指定した次のレイヤーに繋がらない飛跡を抽出する（重複排除なし）
 # =========================================================
-def veto_link(df_tracks, start_layer, veto_layer, cut_index=0):
+def veto_link(df_tracks, start_layer, veto_layer, cut_rule=0):
 
     veto_fname = f"l-{(start_layer):03d}-{(veto_layer):03d}.root"
     print(f"\n===== Veto processing with: {veto_fname} =====")
