@@ -1,4 +1,5 @@
 import numpy as np
+from linklet_analysis.config import REFRACTIVE_CORRECTION,RADIATION_LENGTH
 
 # 引数として受け取った DataFrame に運動量とその誤差などの計算結果を付け足して返す関数
 def calculate_momentum(df,down_layer,n_layers):
@@ -28,9 +29,9 @@ def calculate_momentum(df,down_layer,n_layers):
     df["track_up_ay"] = track_B0s
 
     # 3次元幾何補正を考慮した角度差（散乱角）の計算
-    dax = np.atan(ax1*np.cos(track_B0s)*0.95) - np.atan(ax0*np.cos(track_B0s)*0.95) # 0.95は屈折率による浮き上がりの作用を打ち消す
-    day = np.atan(ay1*np.cos(track_A0s)*0.95) - np.atan(ay0*np.cos(track_A0s)*0.95)
-    
+    dax = np.atan(ax1*np.cos(track_B0s)*REFRACTIVE_CORRECTION) - np.atan(ax0*np.cos(track_B0s)*REFRACTIVE_CORRECTION) # 屈折率による浮き上がりの作用を打ち消す
+    day = np.atan(ay1*np.cos(track_A0s)*REFRACTIVE_CORRECTION) - np.atan(ay0*np.cos(track_A0s)*REFRACTIVE_CORRECTION)
+
     for idx, layer_num in enumerate(linklet_range):
         df[f"dax_{layer_num}"] = dax[:, idx]
         df[f"day_{layer_num}"] = day[:, idx]
@@ -39,7 +40,7 @@ def calculate_momentum(df,down_layer,n_layers):
     #     dax[:,3]=dax[:,3]-0.01
     #     day[:,3]=day[:,3]-0.01
 
-    thick = 0.007*2 / 3.35 #放射長3.35 cm 乳剤層の厚み 70 μm
+    thick = 0.007*2 / RADIATION_LENGTH #放射長3.35 cm 乳剤層の厚み 70 μm
     cos_track0 = np.cos(np.atan(np.sqrt(np.tan(track_A0)**2+np.tan(track_B0)**2)))
     effective_thick = thick / cos_track0 # 1飛跡ごとの有効厚み
     
