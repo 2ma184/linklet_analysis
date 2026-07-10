@@ -1,11 +1,7 @@
 import pandas as pd
 import numpy as np
 
-def extract_gamma_events(input_csv_path, output_csv_path, start_layer, n_layers):
-    print(f"Loading momentum-calculated CSV: {input_csv_path}")
-    df = pd.read_csv(input_csv_path)
-    print(f"Total available tracks: {len(df)}")
-
+def extract_gamma_events(df, start_layer, n_layers):
     # プレート数が5のとき、リンク（カラム名）の終端は4になる
     down_layer = start_layer - n_layers + 1 # 例: 5 - 5 + 1 = 5
     end_link = start_layer - 1                # 例: 5 - 1 = 4 
@@ -66,6 +62,7 @@ def extract_gamma_events(input_csv_path, output_csv_path, start_layer, n_layers)
                         # =========================================================
                         # リンク番号の開始から終了までループを回して距離を取得
                         # 例: down_layer=1, n_layers=5 のとき、idx は 1, 2, 3, 4 と動く
+                        #distance track center??
                         dtc0 = []
                         dtc1 = []
                         for idx in range(down_layer, start_layer):
@@ -96,7 +93,7 @@ def extract_gamma_events(input_csv_path, output_csv_path, start_layer, n_layers)
                                 continue
 
                         # カット4: ねじれ（交差）チェック
-                        # 【修正】end_link（下流端の中点）を基準にする
+                        # end_link（下流端の中点）を基準にする
                         mx = (A[f"x1_{end_link}"] + B[f"x1_{end_link}"]) / 2.0
                         my = (A[f"y1_{end_link}"] + B[f"y1_{end_link}"]) / 2.0
 
@@ -189,12 +186,11 @@ def extract_gamma_events(input_csv_path, output_csv_path, start_layer, n_layers)
                         
                         gamma_events.append(event)
 
-    print("\n\n=== 終了 ===")
+    print("\n=== 終了 ===")
     n_events = len(gamma_events)
     n_events_err = np.sqrt(n_events)
     print(f"抽出されたγ線イベント数: {n_events} ± {n_events_err:.1f}")
 
-    # 5. 結果をCSVに書き出し
-    df_out = pd.DataFrame(gamma_events)
-    df_out.to_csv(output_csv_path, index=False)
-    print(f"Saved gamma events to: {output_csv_path}")
+    return pd.DataFrame(gamma_events)
+
+
