@@ -1,53 +1,8 @@
 import pandas as pd
-import numpy as np
 from linklet_analysis.root import root_to_df
 from linklet_analysis.cuts import  apply_cut
-from linklet_analysis.config import CUT_REGISTRY_QST2021
-# =========================================================
+
 # build_links：最初の layer だけ cut を適用（重複排除なし）
-# =========================================================
-def build_links_old(downlayer, n_layers, cut_index=0):
-    links = None
-
-    cut = CUT_REGISTRY_QST2021[cut_index]
-    cut_rule = cut["rule"]
-    print(f"===== Using cut: {cut['name']} =====")
-
-    for i in range(downlayer, n_layers+downlayer-1):
-        fname = f"l-{i:03d}-{i+1:03d}.root"
-        print(f"Processing file: {fname}")
-        
-        df = root_to_df(f"raw_data/{fname}", branches=["id0","id1","x0","x1","y0","y1","z0","z1","ax0","ax1","ay0","ay1","ph0","ph1","dx","dy"])
-        if i == 1: #i層目のみcut適応
-            df = apply_cut(df, cut_rule)
-
-        df = df.rename(columns={
-            "id0": f"id{i}",
-            "id1": f"id{i+1}",
-            "x0":  f"x0_{i}",
-            "x1":  f"x1_{i}",
-            "y0":  f"y0_{i}",
-            "y1":  f"y1_{i}",
-            "z0":  f"z0_{i}",
-            "z1":  f"z1_{i}",
-            "ax0": f"ax0_{i}",
-            "ax1": f"ax1_{i}",
-            "ay0": f"ay0_{i}",
-            "ay1": f"ay1_{i}",
-            "ph0": f"ph0_{i}",
-            "ph1": f"ph1_{i}",
-            "dx":  f"dx_{i}",
-            "dy":  f"dy_{i}"
-        })
-
-        if links is None:
-            links = df
-        else:
-            links = pd.merge(links, df, on=f"id{i}", how="inner")
-
-        print(f"Link Tracks 1 to {i+1} = {len(links)}")
-        
-    return links, cut
 
 # KAKEN（001が上流：small_is_up=True）QST（030が上流：small_is_up=False）
 # 上流から下流へ（up_to_down=True）：KAKENなら1,2,3 QSTなら3,2,1
@@ -55,7 +10,7 @@ def build_links_old(downlayer, n_layers, cut_index=0):
 # つまり(True & True) または (False & False) のとき昇順
 # (True & False) または (False & True) のとき降順
 def build_links(filepath, start_layer, n_layers, cut_rule, small_is_up=True, up_to_down=True):
-    links = None
+    df_links = None
 
     # 両方のフラグが一致していれば昇順(1)、異なっていれば降順(-1)
     if small_is_up == up_to_down:
@@ -99,21 +54,21 @@ def build_links(filepath, start_layer, n_layers, cut_rule, small_is_up=True, up_
             f"id{current_id_suffix}": f"id{i}",
             f"id{next_id_suffix}":    f"id{next_i}",
             
-            # 一律で `_i` を付与
-            "x0":  f"x0_{low}",
-            "x1":  f"x1_{low}",
-            "y0":  f"y0_{low}",
-            "y1":  f"y1_{low}",
-            "z0":  f"z0_{low}",
-            "z1":  f"z1_{low}",
-            "ax0": f"ax0_{low}",
-            "ax1": f"ax1_{low}",
-            "ay0": f"ay0_{low}",
-            "ay1": f"ay1_{low}",
-            "ph0": f"ph0_{low}",
-            "ph1": f"ph1_{low}",
-            "dx":  f"dx_{low}",
-            "dy":  f"dy_{low}"
+            # linkletを見分けれるようにl-001-002なら12を付与
+            "x0":  f"x0_{low}{high}",
+            "x1":  f"x1_{low}{high}",
+            "y0":  f"y0_{low}{high}",
+            "y1":  f"y1_{low}{high}",
+            "z0":  f"z0_{low}{high}",
+            "z1":  f"z1_{low}{high}",
+            "ax0": f"ax0_{low}{high}",
+            "ax1": f"ax1_{low}{high}",
+            "ay0": f"ay0_{low}{high}",
+            "ay1": f"ay1_{low}{high}",
+            "ph0": f"ph0_{low}{high}",
+            "ph1": f"ph1_{low}{high}",
+            "dx":  f"dx_{low}{high}",
+            "dy":  f"dy_{low}{high}"
         }
         # # 動的にリネーム用の辞書を作成
         # rename_dict = {
@@ -130,28 +85,28 @@ def build_links(filepath, start_layer, n_layers, cut_rule, small_is_up=True, up_
         df = df.rename(columns=rename_dict)
         # ---------------------------------------------------------
 
-        if links is None:
-            links = df
+        if df_links is None:
+            df_links = df
         else:
             # 常に「現在のレイヤー番号(i)」をキーにしてインナージョイン
-            links = pd.merge(links, df, on=f"id{i}", how="inner")
+            df_links = pd.merge(df_links, df, on=f"id{i}", how="inner")
 
-        print(f"Link Tracks {start} to {next_i} = {len(links)}")
+        print(f"Link Tracks {start} to {next_i} = {len(df_links)}")
 
 
-    # #  出力されるカラムの並び順を一律「レイヤー番号の昇順」に強制ソート
-    # if links is not None:
-    #     # ID系のカラムを id3, id4... のように数字の昇順に並べる
-    #     id_cols = sorted([c for c in links.columns if c.startswith("id")], key=lambda x: int(x.replace("id", "")))
+    #  出力されるカラムの並び順を一律「レイヤー番号の昇順」に強制ソート
+    if df_links is not None:
+        # ID系のカラムを id3, id4... のように数字の昇順に並べる
+        id_cols = sorted([c for c in df_links.columns if c.startswith("id")], key=lambda x: int(x.replace("id", "")))
         
-    #     # 物理量系のカラムを 末尾の _3, _4... の昇順に並べる
-    #     other_cols = [c for c in links.columns if not c.startswith("id")]
-    #     other_cols_sorted = sorted(other_cols, key=lambda x: int(x.split("_")[-1]))
+        # 物理量系のカラムを 末尾の _3, _4... の昇順に並べる
+        other_cols = [c for c in df_links.columns if not c.startswith("id")]
+        other_cols_sorted = sorted(other_cols, key=lambda x: int(x.split("_")[-1]))
         
-    #     # 合体させて並び替え
-    #     links = links[id_cols + other_cols_sorted]
+        # 合体させて並び替え
+        df_links = df_links[id_cols + other_cols_sorted]
 
-    return links
+    return df_links
 
 
 # =========================================================
@@ -167,7 +122,7 @@ def veto_link(filepath, df_tracks, start_layer, veto_layer, cut_rule=0):
     veto_ids = df_veto["id0"]
     veto_mask = ~df_tracks[f"id{start_layer}"].isin(veto_ids)
     
-    veto_df = df_tracks[veto_mask]
+    df_veto_tracks = df_tracks[veto_mask]
 
-    print(f"Veto tracks: {len(veto_df)}")
-    return veto_df
+    print(f"Veto tracks: {len(df_veto_tracks)}")
+    return df_veto_tracks
