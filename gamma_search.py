@@ -38,7 +38,7 @@ def calc_vertex(P_A, V_A, P_B, V_B):
 
 
 
-def extract_gamma_events(df, start_layer, n_layers):
+def extract_gamma_events(df, start_layer, n_layers, small_is_up=True):
     #例は全て start_layer=5, n_layer=5, small_is_up=Faleseの時
     end_layer = start_layer - n_layers + 1 # 例: 5 - 5 + 1 = 1
 
