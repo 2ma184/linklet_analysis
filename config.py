@@ -9,7 +9,7 @@ CUT_REGISTRY_QST2021 = {
     0: {"name": "non",
         "rule":{}},
     1: {"name": "standard", 
-        "rule":{"ax":0.0, "ax_sigma":1.0, "ay":0.0, "ay_sigma":1.0, "ph_th":40}}
+        "rule":{"ph_th":40}}
 }
 
 

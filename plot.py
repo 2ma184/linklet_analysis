@@ -148,15 +148,9 @@ class HistPlotter:
         )
 
         if weights is not None:
-            weight_data = self._get_data_from_selected(
-                selected,
-                weights
-            )
+            weight_data = self._get_data_from_selected(selected, weights )
 
-            mask = (
-                np.isfinite(data) &
-                np.isfinite(weight_data)
-            )
+            mask = (np.isfinite(data) & np.isfinite(weight_data) )
 
             data = data[mask]
             weight_data = weight_data[mask]
@@ -171,35 +165,13 @@ class HistPlotter:
         if show_entries:
             label = f"{label}  Entries: {len(data)}"
 
-        counts, edges = np.histogram(
-            data,
-            bins=bins,
-            range=range,
-            weights=weight_data,
-            density=density
-        )
+        counts, edges = np.histogram(data, bins=bins, range=range, weights=weight_data, density=density)
 
         if histtype == "step":
-            ax.stairs(
-                counts,
-                edges,
-                label=label,
-                linewidth=linewidth,
-                **kwargs
-            )
-
+            ax.stairs(counts, edges, label=label, linewidth=linewidth, **kwargs)
         else:
-            ax.hist(
-                data,
-                bins=edges,
-                weights=weight_data,
-                density=density,
-                histtype=histtype,
-                label=label,
-                linewidth=linewidth,
-                alpha=alpha,
-                **kwargs
-            )
+            ax.hist(data, bins=edges, weights=weight_data, density=density, histtype=histtype, label=label, linewidth=linewidth, alpha=alpha, **kwargs)
+
         if range is not None:
             ax.set_xlim(edges[0], edges[-1])
         else:
@@ -230,31 +202,15 @@ class HistPlotter:
 
             # 表示範囲内のデータについて統計量を計算
             if range is not None:
-                stats_data = stats_data[
-                    (stats_data >= range[0]) &
-                    (stats_data <= range[1])
-                ]
+                stats_data = stats_data[(stats_data >= range[0]) & (stats_data <= range[1])]
 
             rows = [
                 ("Entries", len(stats_data)),
-                (
-                    "Mean",
-                    np.mean(stats_data)
-                    if len(stats_data) > 0 else np.nan
-                ),
-                (
-                    "Std Dev",
-                    np.std(stats_data)
-                    if len(stats_data) > 0 else np.nan
-                )
+                ("Mean", np.mean(stats_data) if len(stats_data) > 0 else np.nan),
+                ("Std Dev", np.std(stats_data) if len(stats_data) > 0 else np.nan)
             ]
 
-            add_stats_box(
-                ax,
-                rows,
-                title=expression,
-                position=stats_position
-            )
+            add_stats_box(ax, rows, title=expression, position=stats_position)
 
         return fig, ax, counts, edges
 
@@ -290,15 +246,9 @@ class HistPlotter:
 
         selected = self.df.query(cut) if cut else self.df
 
-        x = self._get_data_from_selected(
-            selected,
-            x_expression
-        )
+        x = self._get_data_from_selected(selected, x_expression)
 
-        y = self._get_data_from_selected(
-            selected,
-            y_expression
-        )
+        y = self._get_data_from_selected(selected, y_expression)
 
         mask = np.isfinite(x) & np.isfinite(y)
 
@@ -306,18 +256,10 @@ class HistPlotter:
         y = y[mask]
 
         # hist2dの中身を明示的に計算
-        counts, xedges, yedges = np.histogram2d(
-            x,
-            y,
-            bins=bins,
-            range=range
-        )
+        counts, xedges, yedges = np.histogram2d(x, y, bins=bins, range=range)
 
         # カウント0のビンをマスク
-        masked_counts = np.ma.masked_where(
-            counts == 0,
-            counts
-        )
+        masked_counts = np.ma.masked_where(counts == 0, counts)
 
         # カラーマップをコピーし、マスク部分を透明にする
         cmap_object = plt.get_cmap(cmap).copy()
@@ -326,10 +268,7 @@ class HistPlotter:
         positive_counts = counts[counts > 0]
 
         if logz and len(positive_counts) > 0:
-            norm = LogNorm(
-                vmin=max(1.0, positive_counts.min()),
-                vmax=positive_counts.max()
-            )
+            norm = LogNorm( vmin=max(1.0, positive_counts.min()), vmax=positive_counts.max() )
         else:
             norm = None
 
@@ -379,40 +318,14 @@ class HistPlotter:
 
             rows = [
                 ("Entries", len(stats_x)),
-                (
-                    "Mean x",
-                    np.mean(stats_x)
-                    if len(stats_x) > 0 else np.nan
-                ),
-                (
-                    "Mean y",
-                    np.mean(stats_y)
-                    if len(stats_y) > 0 else np.nan
-                ),
-                (
-                    "Std Dev x",
-                    np.std(stats_x)
-                    if len(stats_x) > 0 else np.nan
-                ),
-                (
-                    "Std Dev y",
-                    np.std(stats_y)
-                    if len(stats_y) > 0 else np.nan
-                )
+                ("Mean x", np.mean(stats_x) if len(stats_x) > 0 else np.nan),
+                ("Mean y", np.mean(stats_y) if len(stats_y) > 0 else np.nan),
+                ("Std Dev x", np.std(stats_x) if len(stats_x) > 0 else np.nan),
+                ("Std Dev y", np.std(stats_y) if len(stats_y) > 0 else np.nan)
             ]
 
-            add_stats_box(
-                ax,
-                rows,
-                title=f"{x_expression} : {y_expression}",
-                position=stats_position
-            )
+            add_stats_box(ax, rows, title=f"{x_expression} : {y_expression}", position=stats_position )
 
-        h = (
-            counts,
-            xedges,
-            yedges,
-            mesh
-        )
+        h = (counts, xedges, yedges, mesh)
 
         return fig, ax, h

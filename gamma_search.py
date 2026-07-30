@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-import numpy as np
+from scipy.spatial import cKDTree
 
 def calc_vertex(P_A, V_A, P_B, V_B):
     """
@@ -22,7 +22,8 @@ def calc_vertex(P_A, V_A, P_B, V_B):
     det_nom = a*c - b*b
 
     if abs(det_nom) < 1e-12: #det_nomが0なら平行
-        return np.nan, np.array([np.nan, np.nan, np.nan])
+        nan3 = np.full(3, np.nan)
+        return np.nan, nan3.copy(), nan3.copy(), nan3.copy()
     
     #二つの直線の最近接点でのs,t
     s = (b*e - c*d) / det_nom 
@@ -34,211 +35,231 @@ def calc_vertex(P_A, V_A, P_B, V_B):
     vertex = 0.5*(C_A + C_B)
     closest_distance = np.linalg.norm(C_A - C_B)
 
-    return closest_distance, vertex
+    return closest_distance, vertex, C_A, C_B
 
 
 
-def extract_gamma_events(df, start_layer, n_layers, small_is_up=True):
-    #例は全て start_layer=5, n_layer=5, small_is_up=Faleseの時
+def extract_gamma_events(df, start_layer, n_layers):
+    #例は全て start_layer=5, n_layer=5の時
     end_layer = start_layer - n_layers + 1 # 例: 5 - 5 + 1 = 1
+    start_link_name = f"{start_layer-1}{start_layer}"
 
-    # ---------------------------------------------------------
-    # データフレームを辞書リストに変換
-    # ---------------------------------------------------------
+    # DataFrameを辞書リストへ変換
     tracks = df.to_dict(orient="records")
+    if len(tracks) < 2:
+        return pd.DataFrame()
+
+    # =========================================================
+    # KDTreeによる近接trackペアの候補抽出
+    # =========================================================
+    # 全trackについて、最上流layerの下流側基準面における
+    # (x1, y1) 座標を2次元配列として取得する。
+
+    points = np.array([[t[f"x1_{start_link_name}"], t[f"y1_{start_link_name}"]] for t in tracks ], dtype=float)
+
+    # (x1, y1) 平面上にKDTreeを構築して総当たりを防ぎ空間的に近いtrackのみを探索する
+    tree = cKDTree(points)
     
-    CELL = 5.0  # 近接探索用のセルの大きさ (5mm)??5um??
-    grid = {}
-    
-    # 一番上流端のリンク座標（例: x1_45）を基準に空間ハッシュを作成
-    for t in tracks:
-        ix = int(np.floor(t[f"x1_{start_layer-1}{start_layer}"] / CELL))
-        iy = int(np.floor(t[f"y1_{start_layer-1}{start_layer}"] / CELL))
-        key = (ix, iy)
-        if key not in grid:
-            grid[key] = []
-        grid[key].append(t)
+    # 計算量削減のため互いにある距離以内にあるtrackの組だけを探索する
+    SEARCH_RADIUS = 100.0   # 最上流layerのz1面において、候補として比較する最大距離 [µm]
+
+    # SEARCH_RADIUS以内にあるtrackのインデックスペア(i, j)を取得する
+    # query_pairsはi < jの組だけを返すため、(A, B)と(B, A)を重複して調べることはない。    
+    candidate_pairs = tree.query_pairs(r=SEARCH_RADIUS, output_type="ndarray")  # [[i0, j0], [i1, j1], ...] のNumPy配列として返される
+
+    n_candidates = len(candidate_pairs)
 
     seen_pairs = set()
     gamma_events = []
-    pair_count = 0
 
-    print(f"Starting grid-based pair collision check (Link {start_layer-1}{start_layer} as Downstream Base)...")
- 
-    # 各セルをループ
-    for cell_key, vecA in grid.items():
-        ixA, iyA = cell_key
+    print(f"Starting KDTree pair search (Link {start_link_name}, radius={SEARCH_RADIUS} µm)")
+    print(f"Candidate pairs: {n_candidates}")
+
+    for pair_count, (i, j) in enumerate(candidate_pairs, start=1):
+        A = tracks[int(i)]
+        B = tracks[int(j)]
+        if pair_count % 1000 == 0 or pair_count == n_candidates:
+            print(f"\rChecked pairs: {pair_count}", end="", flush=True)
+
+        # =========================================================
+        # IDベースの重複排除
+        # ========================================================
+        a_id = int(A[f"id{start_layer}"])
+        b_id = int(B[f"id{start_layer}"])
+
+        if a_id == b_id: #最上流で同じidなら飛ばす(open_angleが定義できない)
+            continue
+            
+        pair_key = (a_id, b_id) if a_id < b_id else (b_id, a_id)
+        if pair_key in seen_pairs:
+            continue #見たことあるidなら飛ばす
+
+        # =========================================================
+        #  γ線の物理条件カット（幾何学的収束・ねじれ判定）
+        # =========================================================
+        # まずは様々な値を計算
+        # ----- dtc : distance track center (track同士の距離) ------
+        dtc_0 = []
+        dtc_1 = []
+        for idx in range(end_layer, start_layer): # 例: start_layer=5, n_layers=5 のとき、idx は 1, 2, 3, 4 と動く
+            dtc_0.append(np.hypot(A[f"x0_{idx}{idx+1}"] - B[f"x0_{idx}{idx+1}"], A[f"y0_{idx}{idx+1}"] - B[f"y0_{idx}{idx+1}"])) 
+            dtc_1.append(np.hypot(A[f"x1_{idx}{idx+1}"] - B[f"x1_{idx}{idx+1}"], A[f"y1_{idx}{idx+1}"] - B[f"y1_{idx}{idx+1}"])) # 配列の末尾 ([-1]) が 最上流 (idx=4,x1_45) のデータになる
+
         
-        for A in vecA:
-            for dx in [-1, 0, 1]:
-                for dy in [-1, 0, 1]:
-                    neighbor_key = (ixA + dx, iyA + dy)
-                    if neighbor_key not in grid:
-                        continue
-                    
-                    for B in grid[neighbor_key]:
-                        pair_count += 1
-                        print(f"\rChecked pairs: {pair_count}", end="", flush=True)
+        # ----- Vertex (最近接点) ------
+        start_layer_pointA = np.array([A[f"x1_{start_link_name}"], A[f"y1_{start_link_name}"], A[f"z1_{start_link_name}"],], dtype=float)
+        start_layer_pointB = np.array([B[f"x1_{start_link_name}"], B[f"y1_{start_link_name}"], B[f"z1_{start_link_name}"],], dtype=float)
 
-                        # =========================================================
-                        # ① IDベースの重複排除
-                        # ========================================================
-                        a_id = int(A[f"id{start_layer}"])
-                        b_id = int(B[f"id{start_layer}"])
-                        
-                        if A is B: #A,Bが同じなら飛ばす
-                            continue
-                            
-                        pair_key = (a_id, b_id) if a_id < b_id else (b_id, a_id)
-                        if pair_key in seen_pairs:
-                            continue #見たことあるidなら飛ばす
+        start_layer_vectorA = np.array([A["ux"], A["uy"], A["uz"]], dtype=float)
+        start_layer_vectorB = np.array([B["ux"], B["uy"], B["uz"]], dtype=float)
 
-                        # =========================================================
-                        # ② γ線の物理条件カット（幾何学的収束・ねじれ判定）
-                        # =========================================================
-                        # リンク番号の開始から終了までループを回して距離を取得
-                        #distance track center??
-                        dtc_0 = []
-                        dtc_1 = []
-                        for idx in range(end_layer, start_layer): # 例: start_layer=5, n_layers=5 のとき、idx は 1, 2, 3, 4 と動く
-                            dtc_0.append(np.hypot(A[f"x0_{idx}{idx+1}"] - B[f"x0_{idx}{idx+1}"], A[f"y0_{idx}{idx+1}"] - B[f"y0_{idx}{idx+1}"])) 
-                            dtc_1.append(np.hypot(A[f"x1_{idx}{idx+1}"] - B[f"x1_{idx}{idx+1}"], A[f"y1_{idx}{idx+1}"] - B[f"y1_{idx}{idx+1}"])) # 配列の末尾 ([-1]) が 最上流 (idx=4,x1_45) のデータになる
+        track_distance0, vertex, C_A, C_B = calc_vertex(start_layer_pointA, start_layer_vectorA, start_layer_pointB, start_layer_vectorB)
 
-                        # カット1: 上流端（対生成の根本）のトラック同士の距離が5um以下
-                        if dtc_1[-1] > 5.0: 
-                            continue
+        # 平行または計算不能な組を除外
+        if (not np.isfinite(track_distance0) or not np.all(np.isfinite(vertex)) ):
+            continue
+        
+        # vertex_dz = z1からvertexまでの上流方向距離
+        z1_mean = 0.5 * (start_layer_pointA[2] + start_layer_pointB[2] )
+        vertex_dz = (-(vertex[2] - z1_mean) ) #zが負の時は-がかかる
+        
 
-                        # カット2: 下流（配列の末尾）に向かって2本の距離が狭まっていること
-                        # 上流から下流へ、値が「単調増増加」しているかチェック (dtc[idx] > dt_next)
-                        if not all(dtc_0[idx] > dt0_next for idx, dt0_next in enumerate(dtc_0[1:])):
-                            continue
-                        if not all(dtc_1[idx] > dt1_next for idx, dt1_next in enumerate(dtc_1[1:-1])):
-                            continue
-                        if not (dtc_1[-1] < dtc_0[-1] < dtc_0[-2]): # 根本付近の厳密な順序チェック,dct_1_45 < dtc_0_45 < dtc_0_34
-                            continue
+        # -- カット1: vertexがz1より上流側にある
+        C_A_is_upstream = (-(C_A[2] - start_layer_pointA[2]) > 0 ) #zが負の時は-がかかる
+        C_B_is_upstream = (-(C_B[2] - start_layer_pointB[2]) > 0 ) #zが負の時は-がかかる
+        if not (C_A_is_upstream and C_B_is_upstream):
+            continue
 
-                        # カット3: 上流側（配列の先頭側）では十分離れていること
-                        if not (dtc_1[-2] > 20 and dtc_1[-3] > 30 and dtc_1[-4] > 30):
-                            continue
+        # -- カット2: vertexでの最近接距離が5 µm未満
+        if track_distance0 >= 10.0:
+            continue
 
-                        # カット4: ねじれ（交差）チェック
-                        # 下流端の中点(x0_12,y0_12)を基準にする
-                        mx = (A[f"x0_{end_layer}{end_layer+1}"] + B[f"x0_{end_layer}{end_layer+1}"]) / 2.0
-                        my = (A[f"y0_{end_layer}{end_layer+1}"] + B[f"y0_{end_layer}{end_layer+1}"]) / 2.0
+        # -- カット3: 上流（配列の末尾）に向かって2本の距離が狭まっていること
+        # 上流から下流へ、値が「単調増増加」しているかチェック (dtc[idx] > dt_next)
+        if not all(dtc_0[idx] > dt0_next for idx, dt0_next in enumerate(dtc_0[1:])):
+            continue
+        if not all(dtc_1[idx] > dt1_next for idx, dt1_next in enumerate(dtc_1[1:])):
+            continue
+        if not (dtc_1[-1] < dtc_0[-1] < dtc_0[-2]): # 根本付近の厳密な順序チェック,dct_1_45 < dtc_0_45 < dtc_0_34
+            continue
 
-                        # 各リンクでのねじれ条件
-                        twisted = False
-                        for idx in range(end_layer+1, start_layer): # 例: start_layer=5, n_layers=5 のとき、idx は 2, 3, 4 と動く
-                            val_0 = np.hypot(A[f"x0_{idx}{idx+1}"] - mx, A[f"y0_{idx}{idx+1}"] - my) - np.hypot(B[f"x0_{idx}{idx+1}"] - mx, B[f"y0_{idx}{idx+1}"] - my)
-                            val_1 = np.hypot(A[f"x1_{idx}{idx+1}"] - mx, A[f"y1_{idx}{idx+1}"] - my) - np.hypot(B[f"x1_{idx}{idx+1}"] - mx, B[f"y1_{idx}{idx+1}"] - my)
-                            if val_1 * val_0 < 0: #val_0とval1の符号が逆ならねじれ
-                                twisted = True
-                                break #一つでもねじれていたらcut
-                        if twisted:
-                            continue
+        # -- カット4: ねじれ（交差）チェック
+        # 下流端の中点(x0_12,y0_12)を基準にする
+        mx = (A[f"x0_{end_layer}{end_layer+1}"] + B[f"x0_{end_layer}{end_layer+1}"]) / 2.0
+        my = (A[f"y0_{end_layer}{end_layer+1}"] + B[f"y0_{end_layer}{end_layer+1}"]) / 2.0
 
-                        seen_pairs.add(pair_key)
+        # 各リンクでのねじれ条件
+        twisted = False
+        for idx in range(end_layer+1, start_layer): # 例: start_layer=5, n_layers=5 のとき、idx は 2, 3, 4 と動く
+            val_0 = np.hypot(A[f"x0_{idx}{idx+1}"] - mx, A[f"y0_{idx}{idx+1}"] - my) - np.hypot(B[f"x0_{idx}{idx+1}"] - mx, B[f"y0_{idx}{idx+1}"] - my)
+            val_1 = np.hypot(A[f"x1_{idx}{idx+1}"] - mx, A[f"y1_{idx}{idx+1}"] - my) - np.hypot(B[f"x1_{idx}{idx+1}"] - mx, B[f"y1_{idx}{idx+1}"] - my)
+            if val_1 * val_0 < 0: #val_0とval1の符号が逆ならねじれ
+                twisted = True
+                break #一つでもねじれていたらcut
+        if twisted:
+            continue
 
-                        # =========================================================
-                        # ③ γ線物理量の算出
-                        # =========================================================
-                        trackA_p = A["p"]
-                        trackB_p = B["p"]
-                        trackA_p_e = A["p_e"]
-                        trackB_p_e = B["p_e"]
+        seen_pairs.add(pair_key)
 
-                        trackA_ax0, trackA_ay0 = A["track_up_ax"], A["track_up_ay"]
-                        trackB_ax0, trackB_ay0 = B["track_up_ax"], B["track_up_ay"]
+        # =========================================================
+        #  γ線物理量の算出
+        # =========================================================
+        # trackの運動量ベクトルの読み込み
+        trackA_p = A["p"]
+        trackB_p = B["p"]
+        trackA_p_e = A["p_e"]
+        trackB_p_e = B["p_e"]
 
-                        # 運動量・角度の合成
-                        gamma_p = trackA_p + trackB_p
-                        gamma_p_e = np.sqrt((trackA_p_e ** 2) + (trackB_p_e ** 2)) 
+        ## -単位方向ベクトル
+        uxA, uyA, uzA = A["ux"], A["uy"], A["uz"]
+        uxB, uyB, uzB = B["ux"], B["uy"], B["uz"]
 
-                        gamma_Px = A["px"] + B["px"]
-                        gamma_Py = A["py"] + B["py"]
-                        gamma_P_xy = np.sqrt((gamma_Px ** 2) + (gamma_Py ** 2)) # ここ２乗平均ではなく平均では？
+        ## -運動量ベクトル
+        trackA_Px, trackA_Py, trackA_Pz = A["Px"], A["Py"], A["Pz"]
+        trackB_Px, trackB_Py, trackB_Pz = B["Px"], B["Py"], B["Pz"]
 
-                        gamma_Px_e = np.sqrt((A["px_e"] ** 2) + (B["px_e"] ** 2))
-                        gamma_Py_e = np.sqrt((A["py_e"] ** 2) + (B["py_e"] ** 2))
-                        gamma_P_xy_e = np.sqrt(((gamma_Px_e**2 * gamma_Px**2) + (gamma_Py_e**2 * gamma_Py**2)) / (gamma_Px**2 + gamma_Py**2)) #ここも改変必要？
+        ## -エネルギー
+        trackA_E, trackA_E_e = A["E"], A["E_e"]
+        trackB_E, trackB_E_e = B["E"], B["E_e"]
 
-                        gamma_ax = (trackA_p * trackA_ax0 + trackB_p * trackB_ax0) / gamma_p #運動量に重みをつけた角度
-                        gamma_ay = (trackA_p * trackA_ay0 + trackB_p * trackB_ay0) / gamma_p
+        # γ線の運動量ベクトルへ合成（原子核の反跳は無視）
+        gamma_Px = trackA_Px + trackB_Px
+        gamma_Py = trackA_Py + trackB_Py
+        gamma_Pz = trackA_Pz + trackB_Pz
+        gamma_p = np.sqrt(gamma_Px**2 + gamma_Py**2 + gamma_Pz**2)
 
-                        # 誤差の伝播計算
-                        dXdP_A = (trackA_ax0 - trackB_ax0) * trackB_p / (gamma_p ** 2)
-                        dXdP_B = (trackB_ax0 - trackA_ax0) * trackA_p / (gamma_p ** 2)
-                        dYdP_A = (trackA_ay0 - trackB_ay0) * trackB_p / (gamma_p ** 2)
-                        dYdP_B = (trackB_ay0 - trackA_ay0) * trackA_p / (gamma_p ** 2)
-                        
-                        gamma_ax_e = np.sqrt((dXdP_A**2 * trackA_p_e**2) + (dXdP_B**2 * trackB_p_e**2))
-                        gamma_ay_e = np.sqrt((dYdP_A**2 * trackA_p_e**2) + (dYdP_B**2 * trackB_p_e**2))
+        # γ線の傾き
+        gamma_ax = gamma_Px / gamma_Pz
+        gamma_ay = gamma_Py / gamma_Pz
 
-                        # 開き角 (Opening Angle)
-                        open_angle_x = np.abs(trackA_ax0 - trackB_ax0)
-                        open_angle_y = np.abs(trackA_ay0 - trackB_ay0)
-                        open_angle = np.sqrt((trackA_ax0 - trackB_ax0)**2 + (trackA_ay0 - trackB_ay0)**2)
+        # 運動量誤差のみを伝播した暫定的なγ線傾き誤差
+        # トラック方向そのものの測定誤差は未考慮
+        dgamma_ax_dpA = (uxA * gamma_Pz - gamma_Px * uzA) / gamma_Pz**2
+        dgamma_ax_dpB = (uxB * gamma_Pz - gamma_Px * uzB) / gamma_Pz**2
+        gamma_ax_e = np.sqrt((dgamma_ax_dpA * trackA_p_e)**2 + (dgamma_ax_dpB * trackB_p_e)**2)
 
-                        #gamma線のpair同士の距離
-                        track_distance1 = dtc_1[-1]
-                        track_distance2 = dtc_1[-2]
-                        track_distance3 = dtc_1[-3]
-                        track_distance4 = dtc_1[-4]
+        dgamma_ay_dpA = (uyA * gamma_Pz - gamma_Py * uzA) / gamma_Pz**2
+        dgamma_ay_dpB = (uyB * gamma_Pz - gamma_Py * uzB) / gamma_Pz**2
+        gamma_ay_e = np.sqrt((dgamma_ay_dpA * trackA_p_e)**2+ (dgamma_ay_dpB * trackB_p_e)**2)
 
-                        # =====================================================
-                        # Vertex (最近接点)
-                        # =====================================================
-                        start_layer_pointA = np.array([A[f"x1_{start_layer-1}{start_layer}"], A[f"y1_{start_layer-1}{start_layer}"], A[f"z1_{start_layer-1}{start_layer}"] ], dtype=float)
-                        start_layer_pointB = np.array([B[f"x1_{start_layer-1}{start_layer}"], B[f"y1_{start_layer-1}{start_layer}"], B[f"z1_{start_layer-1}{start_layer}"] ], dtype=float)
+        # γ線のエネルギー
+        gamma_E = trackA_E + trackB_E
+        gamma_E_e = np.sqrt(trackA_E_e**2 + trackB_E_e**2)
 
-                        start_layer_vectorA = np.array([trackA_ax0, trackA_ay0, 1.0 ], dtype=float)
-                        start_layer_vectorB = np.array([trackB_ax0, trackB_ay0, 1.0 ], dtype=float)
+        # 誤差計算
+        dp_gamma_dpA = (gamma_Px * uxA + gamma_Py * uyA + gamma_Pz * uzA ) / gamma_p
+        dp_gamma_dpB = (gamma_Px * uxB + gamma_Py * uyB + gamma_Pz * uzB ) / gamma_p
+        gamma_p_e = np.sqrt((dp_gamma_dpA * trackA_p_e)**2 + (dp_gamma_dpB * trackB_p_e)**2)
 
-                        track_distance0, vertex = calc_vertex(start_layer_pointA, start_layer_vectorA, start_layer_pointB, start_layer_vectorB)
+        # 開き角 (Opening Angle) [rad]
+        cos_open_angle = (uxA * uxB + uyA * uyB + uzA * uzB)
+        cos_open_angle = np.clip(cos_open_angle, -1.0, 1.0)# 浮動小数点誤差で±1を超えないようにする
+        open_angle = np.arccos(cos_open_angle)
 
-                        vertex_x = vertex[0]
-                        vertex_y = vertex[1]
-                        vertex_z = vertex[2]
+        # vertex
+        vertex_x = vertex[0]
+        vertex_y = vertex[1]
+        vertex_z = vertex[2]
 
-                        # =========================================================
-                        # ④ イベント辞書の構築
-                        # =========================================================
-                        event = {}
-                        for k, v in A.items():
-                            event[f"{k}_a"] = v
-                        for k, v in B.items():
-                            event[f"{k}_b"] = v
+        #gamma線のpair同士の距離
+        track_distance1 = dtc_1[-1]
+        track_distance2 = dtc_1[-2]
+        track_distance3 = dtc_1[-3]
+        track_distance4 = dtc_1[-4]
 
-                        # 特有の物理計算結果を上書き・追加
-                        event.update({
-                            "RMSx_a": A["RMSx"], "RMSy_a": A["RMSy"],
-                            "RMSx_b": B["RMSx"], "RMSy_b": B["RMSy"],
-                            "RMS_a": A["RMS"], "RMS_a_e": A["RMS_e"],
-                            "RMS_b": B["RMS"], "RMS_b_e": B["RMS_e"],
+        # =========================================================
+        # ④ イベント辞書の構築
+        # =========================================================
+        event = {}
+        for k, v in A.items():
+            event[f"{k}_a"] = v
+        for k, v in B.items():
+            event[f"{k}_b"] = v
 
-                            "Px_a": A["px"], "Py_a": A["py"],
-                            "Px_b": B["px"], "Py_b": B["py"],
-                            "trackA_p": trackA_p, "trackB_p": trackB_p, "gamma_p": gamma_p,
-                            "P_xy_a": A["p_xy"], "P_xy_b": B["p_xy"], "gamma_P_xy": gamma_P_xy,
+        # 特有の物理計算結果を上書き・追加
+        event.update({
+            "gamma_p": gamma_p,
+            "gamma_p_e": gamma_p_e,
 
-                            "Px_a_e": A["px_e"], "Py_a_e": A["py_e"],
-                            "Px_b_e": B["px_e"], "Py_b_e": B["py_e"],
-                            "trackA_p_e": trackA_p_e, "trackB_p_e": trackB_p_e, "gamma_p_e": gamma_p_e,
-                            "P_xy_a_e": A["p_xy_e"], "P_xy_b_e": B["p_xy_e"], "gamma_P_xy_e": gamma_P_xy_e,
+            "gamma_Px": gamma_Px,
+            "gamma_Py": gamma_Py,
+            "gamma_Pz": gamma_Pz,
+            "gamma_Pt": np.hypot(gamma_Px, gamma_Py),
 
-                            "open_angle": open_angle, "open_angle_x": open_angle_x, "open_angle_y": open_angle_y,
+            "gamma_E": gamma_E,
+            "gamma_E_e": gamma_E_e,
 
-                            "gamma_ax": gamma_ax, "gamma_ay": gamma_ay,
-                            "gamma_ax_e": gamma_ax_e, "gamma_ay_e": gamma_ay_e,
+            "gamma_ax": gamma_ax, "gamma_ay": gamma_ay,
+            "gamma_ax_e": gamma_ax_e, "gamma_ay_e": gamma_ay_e,
 
-                            "trackA_ax0": trackA_ax0, "trackA_ay0": trackA_ay0, "trackB_ax0": trackB_ax0, "trackB_ay0": trackB_ay0,
+            "open_angle": open_angle,
 
-                            "track_distance1": track_distance1, "track_distance2": track_distance2, "track_distance3": track_distance3, "track_distance4": track_distance4,
+            "track_distance1": track_distance1, "track_distance2": track_distance2, "track_distance3": track_distance3, "track_distance4": track_distance4,
 
-                            "track_distance0": track_distance0, "vertex_x": vertex_x, "vertex_y": vertex_y, "vertex_z": vertex_z
-                        })
-                        
-                        gamma_events.append(event)
+            "track_distance0": track_distance0, "vertex_x": vertex_x, "vertex_y": vertex_y, "vertex_z": vertex_z, "vertex_dz": vertex_dz
+        })
+
+        gamma_events.append(event)
 
     print("\n=== 終了 ===")
     n_events = len(gamma_events)
@@ -248,3 +269,29 @@ def extract_gamma_events(df, start_layer, n_layers, small_is_up=True):
     return pd.DataFrame(gamma_events)
 
 
+# 過去の参考
+#================================================
+# # 運動量・角度の合成
+# gamma_p = trackA_p + trackB_p
+# gamma_p_e = np.sqrt((trackA_p_e ** 2) + (trackB_p_e ** 2)) 
+
+# gamma_Px = A["px"] + B["px"]
+# gamma_Py = A["py"] + B["py"]
+# gamma_P_xy = np.sqrt((gamma_Px ** 2) + (gamma_Py ** 2)) # ここ２乗平均ではなく平均では？
+
+# gamma_Px_e = np.sqrt((A["px_e"] ** 2) + (B["px_e"] ** 2))
+# gamma_Py_e = np.sqrt((A["py_e"] ** 2) + (B["py_e"] ** 2))
+# gamma_P_xy_e = np.sqrt(((gamma_Px_e**2 * gamma_Px**2) + (gamma_Py_e**2 * gamma_Py**2)) / (gamma_Px**2 + gamma_Py**2)) #ここも改変必要？
+
+# gamma_ax = (trackA_p * trackA_ax0 + trackB_p * trackB_ax0) / gamma_p #運動量に重みをつけた角度
+# gamma_ay = (trackA_p * trackA_ay0 + trackB_p * trackB_ay0) / gamma_p
+
+# # 誤差の伝播計算
+# dXdP_A = (trackA_ax0 - trackB_ax0) * trackB_p / (gamma_p ** 2)
+# dXdP_B = (trackB_ax0 - trackA_ax0) * trackA_p / (gamma_p ** 2)
+# dYdP_A = (trackA_ay0 - trackB_ay0) * trackB_p / (gamma_p ** 2)
+# dYdP_B = (trackB_ay0 - trackA_ay0) * trackA_p / (gamma_p ** 2)
+
+# gamma_ax_e = np.sqrt((dXdP_A**2 * trackA_p_e**2) + (dXdP_B**2 * trackB_p_e**2))
+# gamma_ay_e = np.sqrt((dYdP_A**2 * trackA_p_e**2) + (dYdP_B**2 * trackB_p_e**2))
+#=================================================

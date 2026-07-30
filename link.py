@@ -2,18 +2,18 @@ import pandas as pd
 from linklet_analysis.root import root_to_df
 from linklet_analysis.cuts import  apply_cut
 
-# build_links：最初の layer だけ cut を適用（重複排除なし）
+# build_links：すべての layer で cut を適用（重複排除なし）
 
 # KAKEN（001が上流：small_is_up=True）QST（030が上流：small_is_up=False）
 # 上流から下流へ（up_to_down=True）：KAKENなら1,2,3 QSTなら3,2,1
 # 下流から上流へ（up_to_down=False）：KAKENなら3,2,1 QSTなら1,2,3
 # つまり(True & True) または (False & False) のとき昇順
 # (True & False) または (False & True) のとき降順
-def build_links(filepath, start_layer, n_layers, cut_rule, small_is_up=True, up_to_down=True):
+def build_links(filepath, start_layer, n_layers, cut_rule, scan_direction=True, up_to_down=True):
     df_links = None
 
     # 両方のフラグが一致していれば昇順(1)、異なっていれば降順(-1)
-    if small_is_up == up_to_down:
+    if scan_direction == up_to_down:
         step = 1
     else:
         step = -1
@@ -41,8 +41,8 @@ def build_links(filepath, start_layer, n_layers, cut_rule, small_is_up=True, up_
 
         df = root_to_df(f"{filepath}{filename}", branches=["id0", "id1","x0","x1","y0","y1","z0","z1","ax0","ax1","ay0","ay1","ph0","ph1", "dx", "dy"])
 
-        if (low == start_layer and up_to_down) or (high == start_layer and not(up_to_down)): 
-            df = apply_cut(df, cut_rule)
+        # if (low == start_layer and up_to_down) or (high == start_layer and not(up_to_down)): 
+        df = apply_cut(df, cut_rule)
 
         current_id_suffix = "0" if step == 1 else "1"
         next_id_suffix    = "1" if step == 1 else "0"
@@ -70,19 +70,8 @@ def build_links(filepath, start_layer, n_layers, cut_rule, small_is_up=True, up_
             "dx":  f"dx_{low}{high}",
             "dy":  f"dy_{low}{high}"
         }
-        # # 動的にリネーム用の辞書を作成
-        # rename_dict = {
-        #     f"id{current_id_suffix}": f"id{i}",
-        #     f"id{next_id_suffix}":    f"id{next_i}",
-        # }
-        # # その他の物理量も、ファイル内での「0(小さい方)」「1(大きい方)」に合わせてリネーム
-        # for sfx in ["0", "1"]:
-        #     # low/highのどちらに属するレイヤーかを判定
-        #     layer_num = low if sfx == "0" else high
-        #     for var in ["x", "y", "z", "ax", "ay", "ph"]:
-        #         rename_dict[f"{var}{sfx}"] = f"{var}{sfx}_{layer_num}"
-
         df = df.rename(columns=rename_dict)
+
         # ---------------------------------------------------------
 
         if df_links is None:
@@ -115,7 +104,7 @@ def build_links(filepath, start_layer, n_layers, cut_rule, small_is_up=True, up_
 def veto_link(filepath, df_tracks, start_layer, veto_layer, cut_rule=0):
 
     veto_fname = f"l-{(start_layer):03d}-{(veto_layer):03d}.root"
-    print(f"\n===== Veto processing with: {veto_fname} =====")
+    print(f"Veto processing with: {veto_fname}")
 
     df_veto = root_to_df(f"{filepath}{veto_fname}", branches=["id0"])
 
