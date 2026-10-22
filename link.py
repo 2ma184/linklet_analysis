@@ -9,7 +9,7 @@ from linklet_analysis.cuts import  apply_cut
 # 下流から上流へ（up_to_down=False）：KAKENなら3,2,1 QSTなら1,2,3
 # つまり(True & True) または (False & False) のとき昇順
 # (True & False) または (False & True) のとき降順
-def build_links(filepath, start_layer, n_layers, cut_rule, scan_direction=True, up_to_down=True):
+def build_links(filepath, start_layer, n_layers, cut_rule, scan_direction=True, up_to_down=True, decuplicate=True):
     df_links = None
 
     # 両方のフラグが一致していれば昇順(1)、異なっていれば降順(-1)
